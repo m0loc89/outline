@@ -1,0 +1,65 @@
+name: QA Pipeline - Selenium + SonarCloud
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias de pruebas
+        run: |
+          pip install selenium pytest pytest-cov pytest-html webdriver-manager
+
+      - name: Levantar Outline Wiki (docker compose)
+        run: docker compose up -d
+
+      - name: Esperar a que el servicio responda
+        run: |
+          for i in $(seq 1 20); do
+            curl -sf http://localhost:3000 && break
+            sleep 5
+          done
+
+      - name: Ejecutar pruebas E2E con cobertura
+        run: |
+          pytest tests/ -v \
+            --cov=src --cov-report=xml \
+            --html=reports/report.html --self-contained-html
+
+      - name: Subir reporte y cobertura como artefactos
+        uses: actions/upload-artifact@v4
+        with:
+          name: reportes-qa
+          path: |
+            reports/report.html
+            coverage.xml
+
+  sonarcloud-scan:
+    needs: e2e-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # SonarCloud necesita el historial completo para el análisis de código nuevo
+
+      - name: Descargar artefactos de cobertura
+        uses: actions/download-artifact@v4
+        with:
+          name: reportes-qa
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
