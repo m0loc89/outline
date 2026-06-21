@@ -9,24 +9,44 @@ on:
 jobs:
   e2e-tests:
     runs-on: ubuntu-latest
+    env:
+      NODE_ENV: development
+      DATABASE_URL: postgres://user:pass@localhost:5432/outline
+      REDIS_URL: redis://127.0.0.1:6379
+      URL: http://localhost:3000
+      SECRET_KEY: F0E5AD933D7F6FD8F4DBB3E038C501C052DC0593C686D21ACB30AE205D2F634B
+      UTILS_SECRET: 123456
     steps:
       - uses: actions/checkout@v4
+
+      - name: Configurar Node.js (versión compatible)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'   # dentro del rango permitido por engines
 
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Instalar dependencias de pruebas
-        run: |
-          pip install selenium pytest pytest-cov pytest-html webdriver-manager
+      - name: Instalar dependencias de pruebas Python
+        run: pip install selenium pytest pytest-cov pytest-html webdriver-manager
 
-      - name: Levantar Outline Wiki (docker compose)
+      - name: Levantar Redis y Postgres
         run: docker compose up -d
+
+      - name: Instalar dependencias de Outline
+        run: yarn install --frozen-lockfile
+
+      - name: Compilar Outline
+        run: yarn build
+
+      - name: Iniciar Outline en segundo plano
+        run: yarn start &
 
       - name: Esperar a que el servicio responda
         run: |
-          for i in $(seq 1 20); do
+          for i in $(seq 1 30); do
             curl -sf http://localhost:3000 && break
             sleep 5
           done
