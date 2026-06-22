@@ -46,9 +46,23 @@ jobs:
         with:
           fetch-depth: 0 # necesario para que SonarQube calcule el codigo nuevo
 
-      # Reutiliza la action propia del proyecto: habilita Corepack,
-      # instala Node 26 y Yarn 4 (Berry), y corre "yarn install --immutable"
-      - uses: ./.github/actions/install
+      # NOTA: no se reutiliza ./.github/actions/install porque instala
+      # Node "26.x" sin fijar version exacta, y GitHub Actions lo resuelve
+      # a la ultima 26.x disponible (26.3.1+). El propio package.json de
+      # Outline EXCLUYE esa version en su campo "engines" por un bug
+      # conocido que rompe el paquete reflect-metadata (TypeError:
+      # getOwnMetadataKeys is not a function). Se fija 26.2.0 a mano.
+      - name: Habilitar Corepack
+        run: corepack enable
+
+      - name: Configurar Node.js 26.2.0 (evita el bug de Node 26.3.1+)
+        uses: actions/setup-node@v5
+        with:
+          node-version: "26.2.0"
+          cache: "yarn"
+
+      - name: Instalar dependencias de Outline
+        run: yarn install --immutable
 
       - name: Migrar base de datos de prueba
         run: yarn sequelize db:migrate
@@ -82,8 +96,8 @@ jobs:
           name: reporte-pruebas
           path: proyecto_pruebas_e2e/reports/report.html
 
-      - name: Analisis estatico con SonarQube
-        uses: SonarSource/sonarqube-scan-action@v2
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      # El analisis de SonarQube NO corre aqui: el servidor vive en Docker
+      # local (localhost:9000) y no es accesible desde los runners de
+      # GitHub Actions en la nube. Se ejecuta y documenta por separado
+      # con sonar-scanner-cli, segun lo permite la consigna de la tarea
+      # (ver seccion "Preguntas frecuentes" del documento de la actividad).

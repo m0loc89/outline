@@ -29,13 +29,19 @@ proyecto_pruebas_e2e/              <- proyecto de pruebas Selenium (4.3)
    git push origin main
    ```
 
-4. Antes de que el workflow funcione completo, configura los secrets en
-   GitHub: **Settings → Secrets and variables → Actions → New repository secret**
-   - `SONAR_TOKEN`
-   - `SONAR_HOST_URL` (si usas SonarCloud: `https://sonarcloud.io`)
+4. El pipeline en la nube **no necesita** `SONAR_TOKEN` ni `SONAR_HOST_URL` como secrets de GitHub —
+   esos solo se usan localmente, donde ya tienes Docker con SonarQube corriendo:
+   ```bash
+   docker run --rm -v "$PWD:/usr/src" \
+     -e SONAR_HOST_URL="http://localhost:9000" \
+     -e SONAR_TOKEN="<tu token>" \
+     --network host \
+     sonarsource/sonar-scanner-cli
+   ```
 
-5. Ve a la pestaña **Actions** del repo para ver la ejecución y tomar la
-   captura real que pide la sección 4.5.
+5. Ve a la pestaña **Actions** del repo para ver la ejecución de las pruebas y tomar la captura real
+   que pide la sección 4.5 (esta sí corre en la nube). El tablero de SonarQube (sección 4.4) lo
+   capturas aparte, desde `http://localhost:9000` en tu máquina.
 
 ## Importante: los tests tienen TODOs pendientes
 
