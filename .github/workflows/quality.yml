@@ -55,10 +55,10 @@ jobs:
       - name: Habilitar Corepack
         run: corepack enable
 
-      - name: Configurar Node.js 26.2.0 (evita el bug de Node 26.3.1+)
+      - name: Configurar Node.js 22 LTS
         uses: actions/setup-node@v5
         with:
-          node-version: "26.2.0"
+          node-version: "22"
           cache: "yarn"
 
       - name: Instalar dependencias de Outline
