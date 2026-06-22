@@ -3,7 +3,7 @@ services:
     image: redis
     ports:
       - "127.0.0.1:6379:6379"
-    user: "redis:redis"
+
   postgres:
     image: postgres
     ports:
@@ -12,4 +12,20 @@ services:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: pass
       POSTGRES_DB: outline
-    user: "postgres:postgres"
+
+  outline:
+    image: docker.getoutline.com/outlinewiki/outline:latest
+    depends_on:
+      - redis
+      - postgres
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      URL: http://localhost:3000
+      SECRET_KEY: F0E5AD933D7F6FD8F4DBB3E038C501C052DC0593C686D21ACB30AE205D2F634B
+      UTILS_SECRET: 123456789abcdef
+      DATABASE_URL: postgres://user:pass@postgres:5432/outline
+      REDIS_URL: redis://redis:6379
+      FILE_STORAGE: local
+      FORCE_HTTPS: "false"

@@ -1,103 +1,64 @@
-name: Quality Pipeline
+name: QA Pipeline - Selenium + SonarCloud
 
 on:
   push:
-    branches: [main, develop]
+    branches: [ main, develop ]
   pull_request:
-    branches: [main]
-
-env:
-  NODE_ENV: test
-  DATABASE_URL: postgres://postgres:password@localhost:5432/outline_test
-  REDIS_URL: redis://127.0.0.1:6379
-  URL: http://localhost:3000
-  NODE_OPTIONS: --max-old-space-size=8192
-  SECRET_KEY: F0E5AD933D7F6FD8F4DBB3E038C501C052DC0593C686D21ACB30AE205D2F634B
-  UTILS_SECRET: 123456
-  SLACK_VERIFICATION_TOKEN: 123456
-  SMTP_USERNAME: localhost
+    branches: [ main ]
 
 jobs:
-  test-and-analyze:
+  e2e-tests:
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:14.2
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: password
-          POSTGRES_DB: outline_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
-
     steps:
-      - name: Checkout del repositorio
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0 # necesario para que SonarQube calcule el codigo nuevo
+      - uses: actions/checkout@v4
 
-      # NOTA: no se reutiliza ./.github/actions/install porque instala
-      # Node "26.x" sin fijar version exacta, y GitHub Actions lo resuelve
-      # a la ultima 26.x disponible (26.3.1+). El propio package.json de
-      # Outline EXCLUYE esa version en su campo "engines" por un bug
-      # conocido que rompe el paquete reflect-metadata (TypeError:
-      # getOwnMetadataKeys is not a function). Se fija 26.2.0 a mano.
-      - name: Habilitar Corepack
-        run: corepack enable
-
-      - name: Configurar Node.js 22 LTS
-        uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-          cache: "yarn"
-
-      - name: Instalar dependencias de Outline
-        run: yarn install --immutable
-
-      - name: Migrar base de datos de prueba
-        run: yarn sequelize db:migrate
-
-      - name: Construir Outline
-        run: yarn build
-
-      - name: Levantar Outline en segundo plano
-        run: |
-          yarn start &
-          npx wait-on http://localhost:3000 --timeout 60000
-
-      - name: Configurar Python (suite Selenium)
+      - name: Configurar Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
-      - name: Instalar dependencias de pruebas
-        working-directory: proyecto_pruebas_e2e
-        run: pip install -r requirements.txt
+      - name: Instalar dependencias de pruebas Python
+        run: pip install -r tests/requirements.txt
+
+      - name: Levantar Outline (imagen oficial) + Redis + Postgres
+        run: docker compose -f docker-compose.ci.yml up -d
+
+      - name: Esperar a que el servicio responda
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3000 && break
+            sleep 5
+          done
 
       - name: Ejecutar pruebas E2E con cobertura
-        working-directory: proyecto_pruebas_e2e
         run: |
-          pytest tests/ -v --cov=../server/utils --cov-report=xml \
-                 --html=reports/report.html --self-contained-html
+          pytest tests/ -v \
+            --cov=tests --cov-report=xml \
+            --html=reports/report.html --self-contained-html
 
-      - name: Subir reporte de pruebas como artefacto
+      - name: Subir reporte y cobertura como artefactos
         uses: actions/upload-artifact@v4
         with:
-          name: reporte-pruebas
-          path: proyecto_pruebas_e2e/reports/report.html
+          name: reportes-qa
+          path: |
+            reports/report.html
+            coverage.xml
 
-      # El analisis de SonarQube NO corre aqui: el servidor vive en Docker
-      # local (localhost:9000) y no es accesible desde los runners de
-      # GitHub Actions en la nube. Se ejecuta y documenta por separado
-      # con sonar-scanner-cli, segun lo permite la consigna de la tarea
-      # (ver seccion "Preguntas frecuentes" del documento de la actividad).
+  sonarcloud-scan:
+    needs: e2e-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Descargar artefactos de cobertura
+        uses: actions/download-artifact@v4
+        with:
+          name: reportes-qa
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
